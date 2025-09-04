@@ -26,7 +26,6 @@ const server = http.createServer(app);
 const allowedOrigins = [
   "https://expensia.vercel.app",
   "https://expensia-xi.vercel.app",
-  "http://localhost:5173", // dev
 ];
 
 app.use(
