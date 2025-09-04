@@ -17,16 +17,20 @@ const tripRoutes = require("./routes/tripRoutes.js");
 
 const Trip = require("./models/Trip.js");
 const TripMessage = require("./models/TripMessage.js");
-const User = require("./models/User.js");
 const { connectDB } = require("./config/db.js");
 
 const app = express();
 const server = http.createServer(app);
 
 // --- CORS ---
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "https://expensia-xi.vercel.app",
+  "http://localhost:5173", // for local dev
+];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "https://expensia.vercel.app" || "https://expensia-xi.vercel.app",
+    origin: allowedOrigins,
     credentials: true,
   })
 );
@@ -39,7 +43,7 @@ connectDB();
 
 // --- Routes ---
 app.get("/", (req, res) => {
-  res.send("API is running...");
+  res.send("✅ API is running...");
 });
 
 app.use("/api/v1/auth", authRoutes);
@@ -51,15 +55,17 @@ app.use("/api/v1/trips", tripRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // --- Socket.IO ---
-const allowedOrigin = process.env.FRONTEND_URL || "https://expensia.vercel.app" || "https://expensia-xi.vercel.app";
 const io = new SocketIOServer(server, {
-  cors: { origin: [process.env.FRONTEND_URL || "https://expensia.vercel.app" || "https://expensia-xi.vercel.app"], methods: ["GET", "POST"] },
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+  },
 });
 
 // ✅ Make io available inside controllers
 app.set("io", io);
 
-// Middleware: verify JWT
+// --- Socket Auth Middleware ---
 io.use((socket, next) => {
   const token =
     socket.handshake.auth?.token ||
@@ -77,8 +83,9 @@ io.use((socket, next) => {
   }
 });
 
+// --- Socket Events ---
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.user.id}`);
+  console.log(`✅ User connected: ${socket.user.id}`);
 
   // Join trip room
   socket.on("join-trip", async (tripId) => {
@@ -112,7 +119,6 @@ io.on("connection", (socket) => {
     if (!tripId || !message) return;
 
     try {
-      // Save message to DB
       const msg = await TripMessage.create({
         trip: tripId,
         user: socket.user.id,
@@ -121,7 +127,6 @@ io.on("connection", (socket) => {
 
       const populated = await msg.populate("user", "fullName email");
 
-      // Broadcast to room
       io.to(`trip:${tripId}`).emit("trip-message", populated);
     } catch (err) {
       console.error("Trip message error:", err);
@@ -130,12 +135,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.user.id}`);
+    console.log(`❌ User disconnected: ${socket.user.id}`);
   });
 });
 
 // --- Start server ---
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
