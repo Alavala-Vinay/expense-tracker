@@ -12,7 +12,7 @@ export default function TripChat({ tripId }) {
   const endRef = useRef(null);
 
   const token = useMemo(() => localStorage.getItem("token"), []);
-  const apiBase = useMemo(() => BASE_URL || "http://localhost:4000", []);
+  const apiBase = useMemo(() => BASE_URL || "https://backend-2-qwn9.onrender.com", []);
 
   const currentUserId = useMemo(() => {
     try {
