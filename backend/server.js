@@ -26,7 +26,7 @@ const server = http.createServer(app);
 // --- CORS ---
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "https://expensia.vercel.app" || "*",
+    origin: process.env.FRONTEND_URL || "https://expensia.vercel.app" || "https://expensia-xi.vercel.app",
     credentials: true,
   })
 );
@@ -51,9 +51,9 @@ app.use("/api/v1/trips", tripRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // --- Socket.IO ---
-const allowedOrigin = process.env.FRONTEND_URL || "https://expensia.vercel.app";
+const allowedOrigin = process.env.FRONTEND_URL || "https://expensia.vercel.app" || "https://expensia-xi.vercel.app";
 const io = new SocketIOServer(server, {
-  cors: { origin: [process.env.FRONTEND_URL || "https://expensia.vercel.app"], methods: ["GET", "POST"] },
+  cors: { origin: [process.env.FRONTEND_URL || "https://expensia.vercel.app" || "https://expensia-xi.vercel.app"], methods: ["GET", "POST"] },
 });
 
 // ✅ Make io available inside controllers
