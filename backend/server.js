@@ -24,13 +24,21 @@ const server = http.createServer(app);
 
 // --- CORS ---
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "https://expensia-xi.vercel.app",
-  "http://localhost:5173", // for local dev
+  "https://expensia.vercel.app",
+  "https://expensia-xi.vercel.app",
+  "http://localhost:5173", // dev
 ];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+      // allow requests with no origin (like mobile apps or curl)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS: " + origin));
+      }
+    },
     credentials: true,
   })
 );
@@ -59,6 +67,7 @@ const io = new SocketIOServer(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
