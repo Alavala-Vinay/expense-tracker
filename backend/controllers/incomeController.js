@@ -1,4 +1,5 @@
-const Income = require('../models/Income.js');
+const Income = require('../models/Income');
+const mongoose = require("mongoose");
 const xlsx = require('xlsx');
 
 // =======================
@@ -44,24 +45,58 @@ exports.addIncome = async (req, res) => {
 };
 
 // =======================
-// ✅ Get All Incomes
+// ✅ Get Incomes Grouped by Date (with pagination + date filter)
 // =======================
-exports.getAllIncomes = async (req, res) => {
+exports.getIncomesByDate = async (req, res) => {
   try {
-    const incomes = await Income.find({ userId: req.user.id })
-      .sort({ date: -1 })
-      .lean();
+    const { page = 1, limit = 1, date } = req.query;
+
+    // ✅ Default to today if no date
+    let start, end;
+    if (date) {
+      start = new Date(date);
+    } else {
+      start = new Date();
+    }
+    start.setHours(0, 0, 0, 0);
+
+    end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+
+    const userObjectId = new mongoose.Types.ObjectId(req.user.id);
+
+    const grouped = await Income.aggregate([
+      {
+        $match: {
+          userId: userObjectId,
+          date: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          incomes: { $push: "$$ROOT" },
+        },
+      },
+      { $sort: { _id: -1 } },
+    ]);
+
+    const totalPages = grouped.length || 1;
+    const paginated = grouped.slice((page - 1) * limit, page * limit);
 
     return res.status(200).json({
       success: true,
-      message: 'Incomes fetched successfully',
-      data: incomes
+      message: "Incomes grouped by date",
+      data: paginated,
+      totalPages,
+      currentPage: Number(page),
     });
   } catch (error) {
-    console.error("Error fetching incomes:", error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    console.error("Error fetching grouped incomes:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 // =======================
 // ✅ Delete Income (secured by userId)
