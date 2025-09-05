@@ -4,6 +4,9 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const jwt = require("jsonwebtoken");
+const helmet = require("helmet");
+const compression = require("compression");
+const rateLimit = require("express-rate-limit");
 
 dotenv.config();
 
@@ -23,7 +26,9 @@ const { connectDB } = require("./config/db.js");
 const app = express();
 const server = http.createServer(app);
 
-// --- CORS ---
+// --- Security + Performance ---
+app.use(helmet()); // ✅ Secure headers
+app.use(compression()); // ✅ Gzip compression for smaller payloads
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -31,16 +36,26 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "10kb" }));
+// ✅ Rate limiting to protect API
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+// --- Body parsing ---
+app.use(express.json({ limit: "15kb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // --- DB ---
 connectDB();
 
 // --- Routes ---
-app.get("/", (req, res) => {
-  res.send("API is running...");
-});
+app.get("/", (req, res) => res.send("API is running..."));
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/income", incomeRoutes);
@@ -51,15 +66,15 @@ app.use("/api/v1/trips", tripRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // --- Socket.IO ---
-const allowedOrigin = process.env.FRONTEND_URL || "https://expensia-xi.vercel.app";
+const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
 const io = new SocketIOServer(server, {
-  cors: { origin: [process.env.FRONTEND_URL || "https://expensia-xi.vercel.app"], methods: ["GET", "POST"] },
+  cors: { origin: allowedOrigin, methods: ["GET", "POST"] },
 });
 
 // ✅ Make io available inside controllers
 app.set("io", io);
 
-// Middleware: verify JWT
+// --- Middleware: Verify JWT ---
 io.use((socket, next) => {
   const token =
     socket.handshake.auth?.token ||
@@ -77,25 +92,21 @@ io.use((socket, next) => {
   }
 });
 
+// --- Socket.IO Events ---
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.user.id}`);
+  console.log(`✅ User connected: ${socket.user.id}`);
 
   // Join trip room
   socket.on("join-trip", async (tripId) => {
     try {
-      const trip = await Trip.findById(tripId).select(
-        "userId participants visibility"
-      );
+      const trip = await Trip.findById(tripId).select("userId participants visibility");
       if (!trip) return socket.emit("error", "Trip not found");
 
       const uid = String(socket.user.id);
       const isCreator = String(trip.userId) === uid;
       const isParticipant = trip.participants.map(String).includes(uid);
 
-      if (
-        (trip.visibility === "private" && !isCreator) ||
-        (!isCreator && !isParticipant)
-      ) {
+      if ((trip.visibility === "private" && !isCreator) || (!isCreator && !isParticipant)) {
         return socket.emit("error", "Access denied");
       }
 
@@ -130,12 +141,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.user.id}`);
+    console.log(`❌ User disconnected: ${socket.user.id}`);
   });
 });
 
 // --- Start server ---
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
