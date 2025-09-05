@@ -27,6 +27,11 @@ const incomeSchema = new mongoose.Schema(
       maxlength: 100,
       index: true // ✅ fast filtering by source
     },
+    tripId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Trip",
+          index: true
+    },
     amount: {
       type: Number,
       required: true,
