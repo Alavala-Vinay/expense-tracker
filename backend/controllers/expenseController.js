@@ -2,7 +2,7 @@ const Expense = require('../models/Expense.js');
 const xlsx = require('xlsx');
 
 // =======================
-// ✅ Add Expense
+// ✅ Add Expense (normalized date)
 // =======================
 exports.addExpense = async (req, res) => {
   try {
@@ -31,24 +31,58 @@ exports.addExpense = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+const mongoose = require("mongoose");
 
 // =======================
-// ✅ Get All Expenses
+// ✅ Get Expenses Grouped by Date (defaults to today)
 // =======================
-exports.getAllExpenses = async (req, res) => {
+exports.getExpensesByDate = async (req, res) => {
   try {
-    const expenses = await Expense.find({ userId: req.user.id })
-      .sort({ date: -1 })
-      .lean();
+    const { page = 1, limit = 1, date, tripId } = req.query;
 
-    return res.status(200).json({
+    let start, end;
+    if (date) {
+      start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    const matchStage = {
+      userId: new mongoose.Types.ObjectId(req.user.id),
+    };
+
+    if (tripId) {
+      matchStage.tripId = new mongoose.Types.ObjectId(tripId);
+    }
+
+    if (date) {
+      matchStage.date = { $gte: start, $lte: end };
+    }
+
+    const grouped = await Expense.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          expenses: { $push: "$$ROOT" }
+        }
+      },
+      { $sort: { "_id": -1 } }
+    ]);
+
+    const totalPages = grouped.length || 1;
+    const paginated = grouped.slice((page - 1) * limit, page * limit);
+
+    return res.json({
       success: true,
-      message: 'Expenses fetched successfully',
-      data: expenses
+      data: paginated,
+      totalPages,
+      currentPage: Number(page)
     });
-  } catch (error) {
-    console.error("Error fetching expenses:", error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
