@@ -27,8 +27,8 @@ const app = express();
 const server = http.createServer(app);
 
 // --- Security + Performance ---
-app.use(helmet()); // ✅ Secure headers
-app.use(compression()); // ✅ Gzip compression for smaller payloads
+app.use(helmet()); // Secure headers
+app.use(compression()); // Gzip compression for smaller payloads
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -46,6 +46,14 @@ app.use(
     legacyHeaders: false,
   })
 );
+
+// --- Disable caching for APIs (fix 304 issue) ---
+app.use("/api", (req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  next();
+});
 
 // --- Body parsing ---
 app.use(express.json({ limit: "15kb" }));
