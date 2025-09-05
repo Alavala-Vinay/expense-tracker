@@ -27,6 +27,11 @@ const expenseSchema = new mongoose.Schema(
       maxlength: 100,
       index: true // ✅ fast category filters
     },
+    tripId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Trip",
+      index: true
+    },
     amount: {
       type: Number,
       required: true,
@@ -34,7 +39,6 @@ const expenseSchema = new mongoose.Schema(
     },
     date: {
       type: Date,
-      default: Date.now,
       index: true // ✅ fast date range queries
     }
   },
