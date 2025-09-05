@@ -2,7 +2,7 @@ const Expense = require("../models/Expense");
 const Income = require("../models/Income");
 const Trip = require("../models/Trip");
 const TripMessage = require("../models/TripMessage");
-const User = require("../models/User"); 
+const User = require("../models/User");
 
 // Helpers
 const isCreator = (trip, userId) => String(trip.userId) === String(userId);
@@ -66,7 +66,6 @@ exports.getMyTrips = async (req, res) => {
 };
 
 // Get single trip (populated) — only if requester is creator/participant
-// controllers/tripController.js
 exports.getTripById = async (req, res) => {
   try {
     const { tripId } = req.params;
@@ -74,8 +73,14 @@ exports.getTripById = async (req, res) => {
     const trip = await Trip.findById(tripId)
       .populate("userId", "fullName email profileImageUrl")
       .populate("participants", "fullName email profileImageUrl")
-      .populate("expenses")
-      .populate("incomes");
+      .populate({
+        path: "expenses",
+        select: "category amount date description icon",
+      })
+      .populate({
+        path: "incomes",
+        select: "source amount date description icon",
+      });
 
     if (!trip) {
       return res.status(404).json({ message: "Trip not found" });
@@ -88,8 +93,20 @@ exports.getTripById = async (req, res) => {
     );
 
     if (!isCreator && !isParticipant) {
-      return res.status(403).json({ message: "Not authorized to view this trip" });
+      return res
+        .status(403)
+        .json({ message: "Not authorized to view this trip" });
     }
+
+    // ✅ Ensure icons fallback if missing
+    trip.expenses = trip.expenses.map((e) => ({
+      ...e.toObject(),
+      icon: e.icon || "💸",
+    }));
+    trip.incomes = trip.incomes.map((i) => ({
+      ...i.toObject(),
+      icon: i.icon || "💰",
+    }));
 
     res.json(trip);
   } catch (err) {
@@ -97,7 +114,6 @@ exports.getTripById = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // Add Expense to a Trip (creator or participant)
 exports.addExpenseToTrip = async (req, res) => {
@@ -111,7 +127,7 @@ exports.addExpenseToTrip = async (req, res) => {
     }
 
     const expense = await Expense.create({
-      userId: req.user.id,
+      userId: req.user._id,
       category,
       amount,
       date,
@@ -141,7 +157,7 @@ exports.addIncomeToTrip = async (req, res) => {
     }
 
     const income = await Income.create({
-      userId: req.user.id,
+      userId: req.user._id,
       source,
       amount,
       date,
@@ -215,16 +231,23 @@ exports.removeParticipant = async (req, res) => {
     const trip = await Trip.findById(tripId);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
 
-    if (!isCreator(trip, req.user.id)) {
-      return res.status(403).json({ message: "Only the creator can remove participants" });
+    if (!isCreator(trip, req.user._id)) {
+      return res
+        .status(403)
+        .json({ message: "Only the creator can remove participants" });
     }
 
     if (String(userId) === String(trip.userId)) {
-      return res.status(400).json({ message: "Cannot remove the trip creator" });
+      return res
+        .status(400)
+        .json({ message: "Cannot remove the trip creator" });
     }
 
     await Trip.findByIdAndUpdate(tripId, { $pull: { participants: userId } });
-    const updatedTrip = await Trip.findById(tripId).populate("participants", "fullName email");
+    const updatedTrip = await Trip.findById(tripId).populate(
+      "participants",
+      "fullName email"
+    );
 
     res.json({
       message: "Participant removed successfully",
@@ -267,7 +290,9 @@ exports.markPlaceVisited = async (req, res) => {
     if (!trip) return res.status(404).json({ message: "Trip not found" });
 
     if (!isCreator(trip, req.user._id)) {
-      return res.status(403).json({ message: "Only creator can update places" });
+      return res
+        .status(403)
+        .json({ message: "Only creator can update places" });
     }
 
     const place = trip.places.id(placeId);
@@ -293,11 +318,17 @@ exports.getTripStats = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const actualTotal = trip.expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const actualTotal = trip.expenses.reduce(
+      (sum, e) => sum + (Number(e.amount) || 0),
+      0
+    );
     trip.realBudget = actualTotal;
     await trip.save();
 
-    const plannedPlacesTotal = trip.places.reduce((sum, p) => sum + (p.plannedCost || 0), 0);
+    const plannedPlacesTotal = trip.places.reduce(
+      (sum, p) => sum + (p.plannedCost || 0),
+      0
+    );
 
     res.json({
       data: {
@@ -324,7 +355,8 @@ exports.postMessage = async (req, res) => {
     }
 
     const { message } = req.body;
-    if (!message) return res.status(400).json({ message: "Message is required" });
+    if (!message)
+      return res.status(400).json({ message: "Message is required" });
 
     let msg = await TripMessage.create({
       trip: req.params.tripId,
@@ -382,7 +414,9 @@ exports.updateTripVisibility = async (req, res) => {
     if (!trip) return res.status(404).json({ message: "Trip not found" });
 
     if (!isCreator(trip, req.user._id)) {
-      return res.status(403).json({ message: "Only the creator can update visibility" });
+      return res
+        .status(403)
+        .json({ message: "Only the creator can update visibility" });
     }
 
     trip.visibility = visibility;
