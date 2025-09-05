@@ -1,96 +1,129 @@
-const User = require('../models/User.js');
-const xlsx = require('xlsx');
-const path = require('path');
-const fs = require('fs');
 const Income = require('../models/Income.js');
-//add income
+const xlsx = require('xlsx');
+
+// =======================
+// ✅ Add Income
+// =======================
 exports.addIncome = async (req, res) => {
-    const userId = req.user.id;
-    try {
-        const {icon, source, amount, date, description} = req.body;
+  try {
+    const { icon, source, amount, date, description } = req.body;
 
-        if( !source || !amount || !date) {
-            return res.status(400).json({ message: 'Please fill all fields' });
-        }
-
-        const newIncome = new Income({
-            userId,
-            icon,
-            source,
-            amount,
-            description,
-            date:new Date(date)
-        });
-
-        await newIncome.save();
-
-        return res.status(201).json({  data: newIncome });
-    } catch (error) {
-        return res.status(500).json({ message: 'Server error', error });
+    if (!source || !amount || !date) {
+      return res.status(400).json({ success: false, message: 'Please fill all required fields' });
     }
-}
 
-//get all incomes
-exports.getAllIncomes = async (req, res) => {
-    const userId = req.user.id;
-    try {
-        const income = await Income.find({ userId }).sort({ date: -1 });
-        return res.status(200).json({data: income });
-    } catch (error) {
-        return res.status(500).json({ message: 'Server error', error });
+    if (amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Amount must be greater than 0' });
     }
-}
 
-//delete income
-exports.deleteIncome = async (req, res) => {
-    try {
-        const deletedIncome = await Income.findByIdAndDelete(req.params.id);
-    
-        if (!deletedIncome) {
-            return res.status(404).json({ message: 'Income not found' });
-        }
-    
-        return res.status(200).json({ message: 'Income deleted successfully' });
-    } catch (error) {
-        return res.status(500).json({ message: 'Server error', error });
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate)) {
+      return res.status(400).json({ success: false, message: 'Invalid date format' });
     }
-    
+
+    const newIncome = new Income({
+      userId: req.user.id,
+      icon,
+      source,
+      description,
+      amount,
+      date: parsedDate
+    });
+
+    await newIncome.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Income added successfully',
+      data: newIncome
+    });
+  } catch (error) {
+    console.error("Error adding income:", error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 };
 
+// =======================
+// ✅ Get All Incomes
+// =======================
+exports.getAllIncomes = async (req, res) => {
+  try {
+    const incomes = await Income.find({ userId: req.user.id })
+      .sort({ date: -1 })
+      .lean();
 
-//download income excel
+    return res.status(200).json({
+      success: true,
+      message: 'Incomes fetched successfully',
+      data: incomes
+    });
+  } catch (error) {
+    console.error("Error fetching incomes:", error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
 
-exports.downloadIncomeExcel = async (req, res) => {
-    const userId = req.user.id;
+// =======================
+// ✅ Delete Income (secured by userId)
+// =======================
+exports.deleteIncome = async (req, res) => {
+  try {
+    const deletedIncome = await Income.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.id
+    });
 
-    try {
-        const incomes = await Income.find({ userId }).sort({ date: -1 });
-
-        if (incomes.length === 0) {
-            return res.status(404).json({ message: 'No incomes found' });
-        }
-
-        const data = incomes.map((income) => ({
-            Source: income.source,
-            Amount: income.amount,
-            Date: income.date.toISOString().split('T')[0]
-        }));
-
-        const wb = xlsx.utils.book_new();
-        const ws = xlsx.utils.json_to_sheet(data);
-        xlsx.utils.book_append_sheet(wb, ws, 'Incomes');
-
-        const filePath = path.join(__dirname, '..', 'Income.xlsx');
-        xlsx.writeFile(wb, filePath);
-
-        res.download(filePath, 'Income.xlsx', (err) => {
-            if (err) {
-                console.error('Download error:', err);
-                return res.status(500).json({ message: 'File download error' });
-            }
-        });
-    } catch (error) {
-        console.error('Excel generation error:', error);
-        return res.status(500).json({ message: 'Server error', error });
+    if (!deletedIncome) {
+      return res.status(404).json({ success: false, message: 'Income not found' });
     }
+
+    return res.status(200).json({ success: true, message: 'Income deleted successfully' });
+  } catch (error) {
+    console.error("Error deleting income:", error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// =======================
+// ✅ Download Income Excel (streamed)
+// =======================
+exports.downloadIncomeExcel = async (req, res) => {
+  try {
+    const incomes = await Income.find({ userId: req.user.id })
+      .sort({ date: -1 })
+      .lean();
+
+    if (incomes.length === 0) {
+      return res.status(404).json({ success: false, message: 'No incomes found' });
+    }
+
+    const data = incomes.map(income => ({
+      Source: income.source,
+      Icon: income.icon || '', // ✅ include icon
+      Amount: income.amount,
+      Description: income.description || '',
+      Date: income.date.toISOString().split('T')[0]
+    }));
+
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(data);
+    xlsx.utils.book_append_sheet(wb, ws, 'Incomes');
+
+    // ✅ write to buffer instead of file system
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="Incomes.xlsx"'
+    );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    return res.send(buffer);
+  } catch (error) {
+    console.error("Excel generation error:", error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 };
